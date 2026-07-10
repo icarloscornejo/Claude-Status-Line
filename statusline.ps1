@@ -1,9 +1,9 @@
 # Claude-Status-Line — single-line status bar for Claude Code (Windows / PowerShell 5.1+)
-# Shows: model | cwd@branch (+/-) | tokens (%) | effort | session cost | usage block | version
+# Shows: model | cwd@branch (+/-) | tokens (%) | effort | session cost | usage block
 #
 # Usage block adapts to account type:
 #   - Subscription (Pro/Max, OAuth): 5h / 7d rate-limit percentages + reset times, extra usage
-#   - API key: burn rate ($/h), today's total spend, % of wall time spent in API calls
+#   - API key: burn rate ($/h), today's total spend
 #
 # Env vars:
 #   STATUSLINE_CHECK_UPDATES=false   disable the GitHub release check (no network calls)
@@ -109,7 +109,6 @@ if (-not $effortLevel) { $effortLevel = "medium" }
 
 $totalCostUsd = [double](Coalesce $data.cost.total_cost_usd 0)
 $totalDurationMs = [int64](Coalesce $data.cost.total_duration_ms 0)
-$totalApiDurationMs = [int64](Coalesce $data.cost.total_api_duration_ms 0)
 
 # ===== Build line =====
 $out = "${Blue}${modelName}${Reset}"
@@ -254,30 +253,7 @@ if ($fiveHourPct -or $sevenDayPct) {
         $dayTotalFmt = "{0:0.00}" -f $dayTotal
         $out += "${Sep}${White}day${Reset} $(Get-CostColor $dayTotal)`$${dayTotalFmt}${Reset}"
     }
-
-    if ($totalDurationMs -gt 0) {
-        $apiPct = [int]($totalApiDurationMs * 100 / $totalDurationMs)
-        $out += "${Sep}${Dim}api ${apiPct}%${Reset}"
-    }
 }
-
-# ===== CLI version (cached 1h) =====
-$cliVersionCache = Join-Path $tempDir "status-line-cli-version"
-$cliVersion = $null
-if (Test-Path $cliVersionCache) {
-    $age = (Get-Date) - (Get-Item $cliVersionCache).LastWriteTime
-    if ($age.TotalSeconds -lt 3600) { $cliVersion = Get-Content $cliVersionCache -Raw }
-}
-if (-not $cliVersion) {
-    try {
-        $verOut = & claude --version 2>$null
-        if ($verOut) {
-            $cliVersion = ($verOut -split '\s+')[0]
-            Set-Content -Path $cliVersionCache -Value $cliVersion
-        }
-    } catch {}
-}
-if ($cliVersion) { $out += "${Sep}${Orange}v${cliVersion}${Reset}" }
 
 # ===== Update check (cached 24h) =====
 $updateLine = ""

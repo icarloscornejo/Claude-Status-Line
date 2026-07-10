@@ -1,85 +1,86 @@
 # Claude-Status-Line
 
-A custom status line for [Claude Code](https://claude.com/claude-code) that shows model info, token usage, and cost/usage tracking in a single compact line. It runs as an external shell command, so it doesn't slow down Claude Code or consume extra tokens.
+One line, no wasted tokens: a `statusLine` command for [Claude Code](https://claude.com/claude-code) that reads the CLI's own stdin JSON and renders it back as a colored prompt segment. No polling loop inside Claude Code itself - the binary just shells out to this script on redraw.
 
-Unlike status lines that only show Pro/Max rate limits, this one adapts to **API-key-based accounts** too, where there's no subscription quota to report — instead it tracks live session cost, burn rate, and daily spend.
+On an API key:
 
-## What it shows
+<img width="780" height="54" alt="image" src="https://github.com/user-attachments/assets/ab6a334a-8c94-4145-961e-73dd3504ef8e" />
 
-| Segment | Description | Shown when |
-|---------|-------------|------------|
-| **Model** | Current model name (e.g., Sonnet 5) | always |
-| **cwd@branch (+/-)** | Current folder name, git branch, uncommitted diff stat | always |
-| **Tokens** | Used / total context window (%) | always |
-| **Effort** | Reasoning effort level (low, med, high, xhigh, max) | always |
-| **session** | Session cost so far (`$X.XX`) | when `cost` data is present |
-| **5h / 7d** | Rate-limit usage % and reset time | Pro/Max subscription (OAuth) accounts |
-| **extra** | Extra usage credits spent / monthly limit | Pro/Max accounts with extra usage enabled |
-| **burn** | Burn rate (`$/h`) for the current session | API key accounts, after 2 minutes of session time |
-| **day** | Total spend across all sessions today | API key accounts |
-| **api NN%** | Share of wall-clock time spent in API calls | API key accounts |
-| **vX.Y.Z** | Installed Claude Code CLI version | always |
-| **Update available** | Second line when a newer release exists | checked every 24h |
+<img width="773" height="45" alt="image" src="https://github.com/user-attachments/assets/c737dad7-29df-41bd-b270-444b43a0e877" />
 
-Account type is auto-detected: if the stdin JSON includes `rate_limits`, the subscription block (5h/7d/extra) renders; otherwise the API-key block (burn/day/api%) renders.
 
-Dollar and percentage segments are color-coded: green → yellow → orange → red as usage/spend climbs. Thresholds for the dollar segments are configurable:
 
-```bash
-export STATUSLINE_COST_LOW=2     # green -> yellow
-export STATUSLINE_COST_MED=5     # yellow -> orange
-export STATUSLINE_COST_HIGH=10   # orange -> red
-```
+On a subscription (Pro/Max):
 
-## Installation
+<img width="1037" height="51" alt="image" src="https://github.com/user-attachments/assets/ce231d08-941c-4f88-a0d2-d4575eeee6f0" />
 
-Ask Claude Code:
+<img width="1031" height="51" alt="image" src="https://github.com/user-attachments/assets/1069fd1b-5b92-404e-a574-5f8d84559c25" />
 
-> Clone https://github.com/icarloscornejo/Claude-Status-Line to `~/.claude/statusline/` (or `%USERPROFILE%\.claude\statusline\` on Windows) and configure it as my status bar by following its INSTALL.md.
 
-Claude will clone the repo, pick the right script for your OS, and update `settings.json`. Full step-by-step instructions live in [INSTALL.md](INSTALL.md).
 
-Restart Claude Code after Claude saves the configuration.
+## Getting it running
 
-### Updating
+Tell Claude Code:
 
-When the status line shows a new release is available, ask Claude:
+> Clone https://github.com/icarloscornejo/Claude-Status-Line into `~/.claude/statusline/` and wire it up as my status line - follow INSTALL.md.
 
-> Find my installed status bar and update it.
+That's the whole install: it clones, picks `statusline.sh` or `statusline.ps1` for your OS, merges the `statusLine` key into `settings.json`, and tells you to restart. See [INSTALL.md](INSTALL.md) if you'd rather do it by hand.
 
-Or update it yourself:
+To pick up a new version later: `git -C ~/.claude/statusline pull` - the settings path never changes between releases.
 
-```bash
-git -C ~/.claude/statusline pull
-```
+## The problem this solves
 
-No `settings.json` changes are needed — the path stays valid across versions.
+Most Claude Code status lines assume a Pro/Max subscription: they read `rate_limits` from stdin and show a 5-hour / 7-day quota bar. That's dead weight if you're billed by API usage - there's no quota to bar-chart, so those scripts just print `-`.
 
-## Requirements
+This one looks at the same stdin payload and picks a different story depending on what's actually there:
 
-- `git` in `PATH`
-- macOS / Linux: `jq` and `curl`
-- Windows: PowerShell 5.1+ (default on Windows 10/11)
-- Pro/Max subscription for the `5h` / `7d` / `extra` segments (needs OAuth login); any account gets `session` cost and, on API key auth, `burn` / `day` / `api%`
+- **stdin has `rate_limits`** -> you're on a subscription. Show the 5h/7d bars plus extra-usage credits (pulled from the OAuth usage endpoint, not exposed via stdin).
+- **stdin has no `rate_limits`** -> you're paying per token. Show what actually matters instead: burn rate and running total for the day.
 
-## Caching
+Either way, session cost (`cost.total_cost_usd` from stdin) is a segment on its own - every account type gets it, and the old scripts never surfaced it at all.
 
-- Extra-usage data from the Anthropic API: 60s at `/tmp/claude/status-line-extra-usage-<hash>.json` (`%TEMP%\claude\...` on Windows)
-- Daily spend totals: `~/.cache/claude-statusline/daily-<date>.json` (`%LOCALAPPDATA%\claude-statusline\` on Windows), pruned after 7 days
-- Release check: 24h, `/tmp/claude/status-line-version-cache.json`
+## Segments
 
-All caches are shared across concurrent Claude Code instances/profiles to avoid redundant API calls.
+Always on: model name, `cwd@branch` with a live `+adds -dels` diff stat, context-window tokens used/total, and the current effort level.
 
-## Disabling the update check
+Then, conditionally:
+
+**On a subscription:**
+- `5h` / `7d` - percentage used and local reset time
+- `extra` - extra-usage credits spent vs. monthly limit, if enabled on the account
+
+**On an API key:**
+- `burn` - dollars per hour at the current rate, shown once a session has run past 2 minutes (too noisy before that)
+- `day` - sum of every session's cost today, persisted across restarts
+
+Cost segments shift from green through yellow/orange to red as they climb. The three breakpoints are yours to move:
 
 ```bash
-export STATUSLINE_CHECK_UPDATES=false
+export STATUSLINE_COST_LOW=2     # below this: green
+export STATUSLINE_COST_MED=5     # below this: yellow, above: orange
+export STATUSLINE_COST_HIGH=10   # at/above this: red
 ```
+
+A second line shows up once a day when a newer release is tagged on GitHub; set `STATUSLINE_CHECK_UPDATES=false` to turn that check off completely.
+
+## What it needs
+
+| | macOS / Linux | Windows |
+|---|---|---|
+| Shell | `statusline.sh`, needs `jq` + `curl` | `statusline.ps1`, PowerShell 5.1+ |
+| `git` | in `PATH` | in `PATH` |
+| Subscription segments | OAuth login (Pro/Max) | same |
+| API-key segments | any auth method | same |
+
+## Where it writes
+
+Nothing is sent anywhere except the two things this script already talks to on your behalf: the Anthropic OAuth usage endpoint (subscription accounts only, cached 60s) and GitHub's releases API (cached 24h). Locally:
+
+- `/tmp/claude/` (`%TEMP%\claude\` on Windows) - release cache
+- `~/.cache/claude-statusline/` (`%LOCALAPPDATA%\claude-statusline\` on Windows) - daily spend ledger, one file per day, auto-pruned after a week
+
+Multiple Claude Code profiles pointing at the same script share these caches, so running several instances doesn't multiply the API calls.
 
 ## License
 
-MIT
-
-## Author
-
-Carlos Cornejo
+MIT - Carlos Cornejo

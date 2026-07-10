@@ -1,10 +1,10 @@
 #!/bin/bash
 # Claude-Status-Line — single-line status bar for Claude Code (macOS/Linux)
-# Shows: model | cwd@branch (+/-) | tokens (%) | effort | session cost | usage block | version
+# Shows: model | cwd@branch (+/-) | tokens (%) | effort | session cost | usage block
 #
 # Usage block adapts to account type:
 #   - Subscription (Pro/Max, OAuth): 5h / 7d rate-limit percentages + reset times, extra usage
-#   - API key: burn rate ($/h), today's total spend, % of wall time spent in API calls
+#   - API key: burn rate ($/h), today's total spend
 #
 # Env vars:
 #   STATUSLINE_CHECK_UPDATES=false   disable the GitHub release check (no network calls)
@@ -117,7 +117,6 @@ fi
 
 total_cost_usd=$(echo "$input" | jq -r '.cost.total_cost_usd // 0')
 total_duration_ms=$(echo "$input" | jq -r '.cost.total_duration_ms // 0')
-total_api_duration_ms=$(echo "$input" | jq -r '.cost.total_api_duration_ms // 0')
 
 # ===== Build line =====
 out="${blue}${model_name}${reset}"
@@ -260,29 +259,7 @@ else
         day_total_fmt=$(awk -v c="$day_total" 'BEGIN{printf "%.2f", c}')
         out+="${sep}${white}day${reset} $(resolve_color "$(cost_color "$day_total")")\$${day_total_fmt}${reset}"
     fi
-
-    if [ "$total_duration_ms" -gt 0 ] 2>/dev/null; then
-        api_pct=$(( total_api_duration_ms * 100 / total_duration_ms ))
-        out+="${sep}${dim}api ${api_pct}%${reset}"
-    fi
 fi
-
-# ===== CLI version (cached 1h) =====
-cli_version_cache="/tmp/claude/status-line-cli-version"
-cli_version=""
-if [ -f "$cli_version_cache" ]; then
-    mtime=$(stat -f %m "$cli_version_cache" 2>/dev/null || stat -c %Y "$cli_version_cache" 2>/dev/null)
-    age=$(( $(date +%s) - mtime ))
-    [ "$age" -lt 3600 ] && cli_version=$(cat "$cli_version_cache" 2>/dev/null)
-fi
-if [ -z "$cli_version" ]; then
-    cli_version=$(claude --version 2>/dev/null | awk '{print $1}')
-    if [ -n "$cli_version" ]; then
-        mkdir -p /tmp/claude
-        echo "$cli_version" > "$cli_version_cache"
-    fi
-fi
-[ -n "$cli_version" ] && out+="${sep}${orange}v${cli_version}${reset}"
 
 # ===== Update check (cached 24h) =====
 update_line=""
@@ -310,7 +287,7 @@ if [ "${STATUSLINE_CHECK_UPDATES:-true}" != "false" ]; then
     if [ -n "$version_data" ]; then
         latest_tag=$(echo "$version_data" | jq -r '.tag_name // empty')
         if [ -n "$latest_tag" ] && version_gt "$latest_tag" "$VERSION"; then
-            update_line="\n${dim}Update available: ${latest_tag} → Tell Claude: \"Find my installed status bar and update it\"${reset}"
+            update_line="\n${dim}Update available: ${latest_tag} -> Tell Claude: \"Find my installed status bar and update it\"${reset}"
         fi
     fi
 fi

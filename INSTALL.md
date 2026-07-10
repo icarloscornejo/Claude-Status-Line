@@ -1,34 +1,15 @@
-# Installation
+# Setting this up
 
-This document is the authoritative install guide. It is written to be executed step-by-step by Claude Code when a user asks to install or update this status line.
+Written so Claude Code can follow it step-by-step when a user asks to install or update this status line - but readable if you're doing it by hand too.
 
-## 1. Detect the operating system
-
-- **macOS or Linux** → use `statusline.sh`
-- **Windows** (PowerShell, CMD, Git Bash, or WSL) → use `statusline.ps1`
-
-## 2. Clone the repo
-
-Clone to `~/.claude/statusline/` on Unix, or `%USERPROFILE%\.claude\statusline\` on Windows. If that directory already exists and is a git clone of this repo, run `git pull` in it instead of re-cloning. If the user has multiple Claude Code profiles (custom `CLAUDE_CONFIG_DIR` per profile), a single shared clone is fine — point every profile's `settings.json` at the same path.
-
-**macOS / Linux**
+## The whole thing, if you're on macOS/Linux
 
 ```bash
 git clone https://github.com/icarloscornejo/Claude-Status-Line ~/.claude/statusline
 chmod +x ~/.claude/statusline/statusline.sh
 ```
 
-**Windows (PowerShell)**
-
-```powershell
-git clone https://github.com/icarloscornejo/Claude-Status-Line "$env:USERPROFILE\.claude\statusline"
-```
-
-## 3. Configure `settings.json`
-
-Add (or update) the `statusLine` key in `~/.claude/settings.json` (Unix) or `%USERPROFILE%\.claude\settings.json` (Windows). If the file already contains other keys, merge — do not overwrite. If a custom `CLAUDE_CONFIG_DIR` is in use, edit that directory's `settings.json` instead.
-
-**macOS / Linux**
+Then merge this into `~/.claude/settings.json` (don't clobber other keys already in there):
 
 ```json
 {
@@ -39,7 +20,15 @@ Add (or update) the `statusLine` key in `~/.claude/settings.json` (Unix) or `%US
 }
 ```
 
-**Windows**
+Restart Claude Code. Done.
+
+## The whole thing, if you're on Windows
+
+```powershell
+git clone https://github.com/icarloscornejo/Claude-Status-Line "$env:USERPROFILE\.claude\statusline"
+```
+
+Merge into `%USERPROFILE%\.claude\settings.json`:
 
 ```json
 {
@@ -50,44 +39,31 @@ Add (or update) the `statusLine` key in `~/.claude/settings.json` (Unix) or `%US
 }
 ```
 
-If PowerShell 7+ (`pwsh`) is not installed, fall back to Windows PowerShell 5.1:
+No `pwsh` (PowerShell 7+) installed? Use Windows PowerShell 5.1 instead - swap `pwsh` for `powershell` in the command above. Two things worth knowing about that line:
 
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "powershell -NoProfile -ExecutionPolicy Bypass -File ~/.claude/statusline/statusline.ps1"
-  }
-}
-```
+- `-ExecutionPolicy Bypass` only applies to this one process - it doesn't touch your machine's actual execution policy. Skip it and a locked-down `Restricted`/`AllSigned` policy will reject the script silently, with no status line and no error to explain why.
+- `~` gets expanded by Claude Code itself. On an older build that predates `~` expansion, spell it out: `%USERPROFILE%\.claude\statusline\statusline.ps1` for CMD/PowerShell, or `$USERPROFILE\.claude\statusline\statusline.ps1` if you're launching from Git Bash or WSL.
 
-> `-ExecutionPolicy Bypass` is **process-scoped** — it does not change the machine's PowerShell policy. Without it, a default `Restricted` or `AllSigned` policy silently rejects the unsigned script and Claude Code shows no status line with no error.
->
-> `~` is expanded by Claude Code on both Unix and Windows. On older Claude Code versions, replace `~/.claude/statusline/statusline.ps1` with `%USERPROFILE%\.claude\statusline\statusline.ps1` (CMD / PowerShell) or `$USERPROFILE\.claude\statusline\statusline.ps1` (Git Bash / WSL) — `%VAR%` expands only in CMD/PowerShell, `$VAR` only in bash shells.
+Restart Claude Code. Done.
 
-## 4. Restart Claude Code
+## If you run multiple Claude Code profiles
 
-The status line is loaded at startup. After saving `settings.json`, restart Claude Code (or start a new session) for the change to take effect.
+Each profile can have its own `CLAUDE_CONFIG_DIR` and therefore its own `settings.json` - but there's no need for separate clones of this repo. Point every profile's `statusLine.command` at the same `~/.claude/statusline/` checkout; the caches this script writes are already keyed so they can be shared safely.
 
-## Updating
-
-Pull the latest release:
+## Picking up updates
 
 ```bash
 git -C ~/.claude/statusline pull
 ```
 
-No `settings.json` changes are needed — the command path is stable across versions.
+The command path in `settings.json` doesn't change between releases, so that's the only step.
 
-## Uninstalling
+## Taking it back out
 
-1. Remove the `statusLine` block from `settings.json`.
-2. Delete the clone: `rm -rf ~/.claude/statusline` (or the Windows equivalent).
+Delete the `statusLine` block from `settings.json`, then remove the checkout: `rm -rf ~/.claude/statusline` (or the Windows equivalent).
 
-## Requirements
+## If something's not rendering
 
-- `git` in `PATH`
-- macOS / Linux: `jq` and `curl`
-- Windows: PowerShell 5.1+ (default on Windows 10/11)
-
-If `jq` is missing on macOS/Linux, install it with the system package manager (`brew install jq`, `apt install jq`, etc.).
+- `jq` missing on macOS/Linux -> `brew install jq` or your distro's package manager
+- Blank status line on Windows -> almost always the execution-policy issue above; add `-ExecutionPolicy Bypass` back
+- Still nothing -> run the script directly with a sample payload to see the error: `echo '{}' | ~/.claude/statusline/statusline.sh`
